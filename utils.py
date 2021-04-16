@@ -1,6 +1,10 @@
 import numpy as np
 import cv2
+import torch
 from sklearn.feature_extraction import image as sk
+
+from aanet.dataloader import transforms
+
 
 # Normalizes a regular rgb image by dividing by 255
 def normalize(image):
@@ -36,7 +40,6 @@ def deNormalize(image):
     image_normed = np.array(image_normed, np.intc)
 
     return image_normed
-
 
 def extractPatches(image, shape, offset = (0,0), stride = (1,1)):
     """Extracts (typically) overlapping regular patches from a grayscale image
@@ -76,6 +79,31 @@ def extractPatches(image, shape, offset = (0,0), stride = (1,1)):
 
 
 
+def aanetPreprocess(left, right):
+    # AANet passes images in rgb format
+    left = cv2.cvtColor(left, cv2.COLOR_BGR2RGB)
+    right = cv2.cvtColor(right, cv2.COLOR_BGR2RGB)
+
+    # Used for transform tensors geenerate below
+    IMAGENET_MEAN = [0.485, 0.456, 0.406]
+    IMAGENET_STD = [0.229, 0.224, 0.225]
+
+    # Converts images to torch tensors
+    transform = transforms.Compose([
+        transforms.ToTensor(),
+        transforms.Normalize(mean=IMAGENET_MEAN, std=IMAGENET_STD)])
+
+    sample = dict()
+
+    sample["left"] = left
+    sample["right"] = right
+
+    sample = transform(sample)
+
+    return sample
+
+    
+
 def net1Preprocess(image, patches = None, resizeDims = None):
     if isinstance(image, list):
         image = np.asarray(image)
@@ -95,3 +123,34 @@ def net1Preprocess(image, patches = None, resizeDims = None):
 
     else:
         return zScoreNormalize(image)
+
+
+
+# Function to load a pytorch model
+def loadPyTorchModel(net, pretrained_path, return_epoch_iter=False, resume=False, no_strict=False):
+    if pretrained_path is not None:
+        if torch.cuda.is_available():
+            state = torch.load(pretrained_path, map_location='cuda')
+        else:
+            state = torch.load(pretrained_path, map_location='cpu')
+
+        from collections import OrderedDict
+        new_state_dict = OrderedDict()
+
+        weights = state['state_dict'] if 'state_dict' in state.keys() else state
+
+        for k, v in weights.items():
+            name = k[7:] if 'module' in k and not resume else k
+            new_state_dict[name] = v
+
+        if no_strict:
+            net.load_state_dict(new_state_dict, strict=False)  # ignore intermediate output
+        else:
+            net.load_state_dict(new_state_dict)  # optimizer has no argument `strict`
+
+        if return_epoch_iter:
+            epoch = state['epoch'] if 'epoch' in state.keys() else None
+            num_iter = state['num_iter'] if 'num_iter' in state.keys() else None
+            best_epe = state['best_epe'] if 'best_epe' in state.keys() else None
+            best_epoch = state['best_epoch'] if 'best_epoch' in state.keys() else None
+            return epoch, num_iter, best_epe, best_epoch

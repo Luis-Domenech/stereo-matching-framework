@@ -17,7 +17,8 @@ import numpy as np
 from tensorflow.keras.models import Model, Sequential, load_model
 
 from utils import normalize
-from matchingCostModel import getCostVolume
+import matchingCostModel
+import aanetModel
 
 
 class Direction:
@@ -236,7 +237,7 @@ def aggregate_costs(cost_volume, parameters, paths):
 
 # This is the Matching Cost Computation and this one uses Census Transform and Hamming Dist
 # TODO: This is where we would insert our awesome net
-def compute_costs(left, right, parameters, save_images):
+def compute_costs(left, right, parameters, save_images, model):
     """
     first step of the sgm algorithm, matching cost based on census transform and hamming distance.
     :param left: left image.
@@ -347,12 +348,22 @@ def compute_costs(left, right, parameters, save_images):
 
     # left_cost_volume = model.predict([np.asarray([np.swapaxes(left_image, 0, 1)]), np.asarray([np.swapaxes(right_image, 0, 1)])])
     
-    print('\tRunning Matching Cost Model')
-    sys.stdout.flush()
-    dawn = t.time()
-    left_cost_volume = getCostVolume("matchingCostModel.h5", left, right)
-    dusk = t.time()
-    print('\t(done in {:.2f}s)'.format(dusk - dawn))
+
+    if model == "net1":
+        print('\tRunning Matching Cost Model')
+        sys.stdout.flush()
+        dawn = t.time()
+        left_cost_volume = matchingCostModel.getCostVolume("matchingCostModel.h5", left, right)
+        dusk = t.time()
+        print('\t(done in {:.2f}s)'.format(dusk - dawn))
+
+    if model == "aanet":
+        print('\tRunning AANet Model')
+        sys.stdout.flush()
+        dawn = t.time()
+        left_cost_volume = aanetModel.getCostVolume("./aanet/pretrained/aanet+_kitti15-2075aea1.pth", left, right)
+        dusk = t.time()
+        print('\t(done in {:.2f}s)'.format(dusk - dawn))
 
     return left_cost_volume
 
@@ -419,6 +430,7 @@ def sgm():
     parser.add_argument('--paths', default=4, type=int, help='number of paths for cost aggregation')
     parser.add_argument('--images', default=False, type=bool, help='save intermediate representations')
     parser.add_argument('--eval', default=True, type=bool, help='evaluate disparity map with 3 pixel error')
+    parser.add_argument('--model', default="aanet", type=str, help='evaluate disparity map with 3 pixel error')
     args = parser.parse_args()
 
     left_name = args.left
@@ -435,68 +447,83 @@ def sgm():
     save_images = args.images
     evaluation = args.eval
 
+    model = args.model
+
+    if model not in ["aanet", "net1"]:
+        raise("Model does not exist")
+
+
     dawn = t.time()
 
     parameters = Parameters(max_disparity=disparity, P1=2.3, P2=55.8, csize=(7, 7), bsize=(3, 3))
     paths = Paths(paths)
 
-    # Load images
-    print('\nLoading images...')
-    left, right = load_images(left_name, right_name, parameters)
+    if model == "net1":
+        # Load images
+        print('\nLoading images...')
+        left, right = load_images(left_name, right_name, parameters)
 
-    # Calculate cost using network
-    print('\nStarting cost computation...')
-    left_cost_volume = compute_costs(left, right, parameters, save_images)
-    # left_cost_volume, right_cost_volume = compute_costs(left, right, parameters, save_images)
+        # Calculate cost using network
+        print('\nStarting cost computation...')
+        left_cost_volume = compute_costs(left, right, parameters, save_images, model)
+
+        if save_images:
+            left_disparity_map = np.uint8(normalize(np.argmin(left_cost_volume, axis=2), parameters))
+            cv2.imwrite('output/disp_map_left_cost_volume.png', left_disparity_map)
+            right_disparity_map = np.uint8(normalize(np.argmin(right_cost_volume, axis=2), parameters))
+            cv2.imwrite('output/disp_map_right_cost_volume.png', right_disparity_map)
+
+        # Do SGM cost aggregation on left volume matrix
+        print('\nStarting left aggregation computation...')
+        left_aggregation_volume = aggregate_costs(left_cost_volume, parameters, paths)
+
+        # Calculate WTA and sub optimal disparity maps
+        print('\nSelecting best disparities...')
+        disparity_map, sub_obtimal_disparity_map = select_disparity(left_aggregation_volume)
+
+        # Do standard disparity map normalization
+        disparity_map = np.uint8(normalize(disparity_map, parameters))
+        sub_obtimal_disparity_map = np.uint8(normalize(sub_obtimal_disparity_map, parameters))
+
+        if save_images:
+            cv2.imwrite('output/left_disp_map_no_post_processing.png', left_disparity_map)
+            cv2.imwrite('output/right_disp_map_no_post_processing.png', right_disparity_map)
+
+        # Apply median filter to both maps
+        print('\nApplying median filter...')
+        disparity_map = cv2.medianBlur(disparity_map, parameters.bsize[0])
+        sub_obtimal_disparity_map = cv2.medianBlur(sub_obtimal_disparity_map, parameters.bsize[0])
+
+        # Save disparity maps
+        cv2.imwrite(D1, disparity_map)
+        cv2.imwrite(D2, sub_obtimal_disparity_map)
 
 
-    if save_images:
-        left_disparity_map = np.uint8(normalize(np.argmin(left_cost_volume, axis=2), parameters))
-        cv2.imwrite('output/disp_map_left_cost_volume.png', left_disparity_map)
-        right_disparity_map = np.uint8(normalize(np.argmin(right_cost_volume, axis=2), parameters))
-        cv2.imwrite('output/disp_map_right_cost_volume.png', right_disparity_map)
+        # Evaluate disparity maps to ground truths
+        if evaluation:
+            print('\nEvaluating optimal disparity map...')
+            recall = get_recall(disparity_map, left_gt_name, args)
+            print('\tRecall = {:.2f}%'.format(recall * 100.0))
+            print('\nEvaluating sub obtimal disparity map...')
+            recall = get_recall(sub_obtimal_disparity_map, left_gt_name, args)
+            print('\tRecall = {:.2f}%'.format(recall * 100.0))
 
+
+    if model == "aanet":
+        # Load images
+        print('\nLoading images...')
+        left, right = load_images(left_name, right_name, parameters)
+
+        # Calculate Disparity Map
+        print('\nRunnin AANet Model...')
+        aanet_dawn = t.time()
+        optimal_disparity_map = aanetModel.getDisparityMap("./aanet/pretrained/aanet+_kitti15-2075aea1.pth", left, right)
+        aanet_dusk = t.time()
+        print('\t(done in {:.2f}s)'.format(aanet_dusk - aanet_dawn))
+
+        cv2.imwrite(D1, optimal_disparity_map)
+        
     
-    # Do cost SGM cost aggregation on left volume matrix
-    print('\nStarting left aggregation computation...')
-    left_aggregation_volume = aggregate_costs(left_cost_volume, parameters, paths)
-    # print('\nStarting right aggregation computation...')
-    # right_aggregation_volume = aggregate_costs(right_cost_volume, parameters, paths)
-
-    # Calculate WTA and sub optimal disparity maps
-    print('\nSelecting best disparities...')
-    disparity_map, sub_obtimal_disparity_map = select_disparity(left_aggregation_volume)
-    disparity_map = np.uint8(normalize(disparity_map, parameters))
-    sub_obtimal_disparity_map = np.uint8(normalize(sub_obtimal_disparity_map, parameters))
-    
-    # right_disparity_map = np.uint8(normalize(select_disparity(right_aggregation_volume), parameters))
-
-    if save_images:
-        cv2.imwrite('output/left_disp_map_no_post_processing.png', left_disparity_map)
-        cv2.imwrite('output/right_disp_map_no_post_processing.png', right_disparity_map)
-
-
-    # Apply median filter to both maps
-    print('\nApplying median filter...')
-    disparity_map = cv2.medianBlur(disparity_map, parameters.bsize[0])
-    sub_obtimal_disparity_map = cv2.medianBlur(sub_obtimal_disparity_map, parameters.bsize[0])
-
-    # right_disparity_map = cv2.medianBlur(right_disparity_map, parameters.bsize[0])
-    
-    # Save disparity maps
-    cv2.imwrite(D1, disparity_map)
-    cv2.imwrite(D2, sub_obtimal_disparity_map)
-
-
-    # Evaluate disparity maps to ground truths
-    if evaluation:
-        print('\nEvaluating optimal disparity map...')
-        recall = get_recall(disparity_map, left_gt_name, args)
-        print('\tRecall = {:.2f}%'.format(recall * 100.0))
-        print('\nEvaluating sub obtimal disparity map...')
-        recall = get_recall(sub_obtimal_disparity_map, left_gt_name, args)
-        print('\tRecall = {:.2f}%'.format(recall * 100.0))
-
     dusk = t.time()
     print('\nEnd.')
     print('\nTotal execution time = {:.2f}s'.format(dusk - dawn))

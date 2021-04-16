@@ -1,3 +1,5 @@
 # Exclude all h5 files except the actual model since it lightweight
 *.h5
 !matchingCostModel.h5
+__pycache__
+build
