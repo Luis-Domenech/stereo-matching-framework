@@ -71,6 +71,7 @@ def loadAANetModel(model, only_cost_volume):
     if os.path.exists(pretrained_aanet):
         print('Loading pretrained AANet:', pretrained_aanet)
         loadPyTorchModel(aanet, pretrained_aanet, no_strict = False)
+        print("Model loaded")
 
     else:
         print("No model found... using random initialization")
@@ -154,6 +155,7 @@ def getDisparityMap(model, left, right):
 
     # Do prediction
     with torch.no_grad():
+        print("Running model")
         disparity_map = aanet(left, right)[-1]
 
     if disparity_map.size(-1) < left.size(-1):

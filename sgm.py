@@ -10,6 +10,8 @@ import tensorflow as tf
 import argparse
 import sys
 import time as t
+import warnings
+warnings.filterwarnings('ignore')
 
 import cv2
 import numpy as np
@@ -405,10 +407,11 @@ def get_recall(disparity, gt, args):
     :param args: program arguments.
     :return: rate of correct predictions.
     """
+    disparity = np.squeeze(disparity, axis=2)
     truth = cv2.imread(gt, cv2.IMREAD_GRAYSCALE)
-    truth = cv2.resize(truth, (187, 621), interpolation = cv2.INTER_AREA)
+    # truth = cv2.resize(truth, (187, 621), interpolation = cv2.INTER_AREA)
     # gt = np.float32(np.swapaxes(truth, 0, 1))
-    gt = np.int16(gt / 255.0 * float(args.disp))
+    gt = np.int16(truth / 255.0 * float(args.disp))
     disparity = np.int16(np.float32(disparity) / 255.0 * float(args.disp))
     correct = np.count_nonzero(np.abs(disparity - gt) <= 3)
     return float(correct) / gt.size
@@ -515,7 +518,7 @@ def sgm():
         left, right = load_images(left_name, right_name, parameters)
 
         # Calculate Disparity Map
-        print('\nRunnin AANet Model...')
+        print('\nRunning AANet Model...')
         aanet_dawn = t.time()
         optimal_disparity_map = aanetModel.getDisparityMap("./aanet/pretrained/aanet+_kitti15-2075aea1.pth", left, right)
         aanet_dusk = t.time()
@@ -523,6 +526,15 @@ def sgm():
 
         cv2.imwrite(D1, optimal_disparity_map)
         
+        # Evaluate disparity maps to ground truths
+        if evaluation:
+            print('\nEvaluating optimal disparity map...')
+            recall = get_recall(optimal_disparity_map, left_gt_name, args)
+            print('\tRecall = {:.2f}%'.format(recall * 100.0))
+            # print('\nEvaluating sub obtimal disparity map...')
+            # recall = get_recall(sub_obtimal_disparity_map, left_gt_name, args)
+            # print('\tRecall = {:.2f}%'.format(recall * 100.0))
+
     
     dusk = t.time()
     print('\nEnd.')

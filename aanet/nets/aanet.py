@@ -172,12 +172,18 @@ class AANet(nn.Module):
                         curr_left_img = left_img
                         curr_right_img = right_img
                     else:
+                        # curr_left_img = F.interpolate(left_img,
+                        #                               scale_factor=scale_factor,
+                        #                               mode='bilinear', align_corners=False)
                         curr_left_img = F.interpolate(left_img,
-                                                      scale_factor=scale_factor,
-                                                      mode='bilinear', align_corners=False)
+                                                        scale_factor=scale_factor,
+                                                        recompute_scale_factor=True,
+                                                        mode='bilinear', align_corners=False)
                         curr_right_img = F.interpolate(right_img,
-                                                       scale_factor=scale_factor,
-                                                       mode='bilinear', align_corners=False)
+                                                        scale_factor=scale_factor,
+                                                        recompute_scale_factor=True,
+                                                        mode='bilinear', align_corners=False)
+
                     inputs = (disparity, curr_left_img, curr_right_img)
                     disparity = self.refinement[i](*inputs)
                     disparity_pyramid.append(disparity)  # [H/2, H]
@@ -191,11 +197,13 @@ class AANet(nn.Module):
                         curr_right_img = right_img
                     else:
                         curr_left_img = F.interpolate(left_img,
-                                                      scale_factor=scale_factor,
-                                                      mode='bilinear', align_corners=False)
+                                                        scale_factor=scale_factor,
+                                                        recompute_scale_factor=True,
+                                                        mode='bilinear', align_corners=False)
                         curr_right_img = F.interpolate(right_img,
-                                                       scale_factor=scale_factor,
-                                                       mode='bilinear', align_corners=False)
+                                                        scale_factor=scale_factor,
+                                                        recompute_scale_factor=True,
+                                                        mode='bilinear', align_corners=False)
                     inputs = (disparity, curr_left_img, curr_right_img)
                     disparity = self.refinement[i](*inputs)
                     disparity_pyramid.append(disparity)  # [H/2, H]
