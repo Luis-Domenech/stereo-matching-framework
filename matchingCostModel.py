@@ -66,19 +66,17 @@ def plot_training(H, plotPath):
 
 
 def MatchingCostModel():
-    # left_image = Input(input_shape)
+    
     left_image = Input(shape = (None, None, 1))
-    # right_image = Input(input_shape)
     right_image = Input(shape = (None, None, 1))
 
-    # x1 = Reshape((340,37,37,3), input_shape=input_shape)(left_image)
     x1 = Conv2D(num_conv_feature_maps, conv_kernel_size, padding='same',
                     data_format='channels_last', activation=None, 
-                    use_bias=True, kernel_initializer='he_uniform', bias_initializer='zeros', 
-                    kernel_regularizer=None, bias_regularizer=None, activity_regularizer=None, kernel_constraint=None, 
-                    bias_constraint=None)(left_image)
+                    use_bias=True, kernel_initializer='he_uniform', 
+                    bias_initializer='zeros', kernel_regularizer=None, 
+                    bias_regularizer=None, activity_regularizer=None, 
+                    kernel_constraint=None, bias_constraint=None)(left_image)
 
-    # x1 = Conv2D(num_conv_feature_maps, conv_kernel_size, input_shape=input_shape, data_format='channels_last')(left_image)
     x1 = Activation("relu")(x1)
     x1 = Conv2D(num_conv_feature_maps, conv_kernel_size, padding='same')(x1)
     x1 = Activation("relu")(x1)
@@ -97,13 +95,13 @@ def MatchingCostModel():
     x1 = AveragePooling2D(pool_size=(3, 3), strides=(1, 1), padding='same')(x1)
     x1 = AveragePooling2D(pool_size=(1, 1), strides=(1, 1), padding='same')(x1)
 
-    # x2 = Reshape((340,37,37,3), input_shape=input_shape)(right_image)
     x2 = Conv2D(num_conv_feature_maps, conv_kernel_size, padding='same',
                     data_format='channels_last', activation=None, 
-                    use_bias=True, kernel_initializer='he_uniform', bias_initializer='zeros', 
-                    kernel_regularizer=None, bias_regularizer=None, activity_regularizer=None, kernel_constraint=None, 
-                    bias_constraint=None)(right_image)
-    # x2 = Conv2D(num_conv_feature_maps, conv_kernel_size, input_shape=input_shape, data_format='channels_last')(right_image)
+                    use_bias=True, kernel_initializer='he_uniform', 
+                    bias_initializer='zeros', kernel_regularizer=None, 
+                    bias_regularizer=None, activity_regularizer=None, 
+                    kernel_constraint=None, bias_constraint=None)(right_image)
+
     x2 = Activation("relu")(x2)
     x2 = Conv2D(num_conv_feature_maps, conv_kernel_size, padding='same')(x2)
     x2 = Activation("relu")(x2)
@@ -111,8 +109,6 @@ def MatchingCostModel():
     x2 = Activation("relu")(x2)
     x2 = Conv2D(num_conv_feature_maps, conv_kernel_size, padding='same')(x2)
     x2 = Activation("relu")(x2)
-    # x2 = Conv2D(num_conv_feature_maps, conv_kernel_size, padding='same')(x2)
-    # x2 = Activation("relu")(x2)
     x2 = Conv2D(num_conv_feature_maps, (1,1), padding='same')(x2)
     x2 = Activation("relu")(x2)
 
@@ -122,9 +118,7 @@ def MatchingCostModel():
     x2 = AveragePooling2D(pool_size=(1, 1), strides=(1, 1), padding='same')(x2)
 
     # Now we concatenate both nets
-    # x = Concatenate(axis=3)([x1, x2])
     x = Dot(axes=1)([x1, x2])
-    # x = batch_dot(x1, x2, axes=1)
 
     x = Conv2D(384, (1,1))(x)
     x = Activation("relu")(x)
@@ -240,7 +234,7 @@ def getCostVolume(model, left, right):
 
 
 
-trainModel("matchingCostModel.h5")
+# trainModel("matchingCostModel.h5")
 
 
 # test = np.random.random((1,375,1242,3))
